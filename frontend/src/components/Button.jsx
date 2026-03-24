@@ -31,8 +31,8 @@ export default function Button({ button, variables, onClick, onContextMenu }) {
     <div 
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className="flex flex-col items-center justify-center rounded-lg shadow-lg cursor-pointer transition-all hover:brightness-110 active:scale-95 border border-white/5"
-      style={{ backgroundColor: bg, minHeight: '100px', width: '100%' }}
+      className="flex flex-col items-center justify-center rounded-xl shadow-lg cursor-pointer transition-all hover:brightness-110 active:scale-95 border border-white/5 aspect-square"
+      style={{ backgroundColor: bg, width: '100%' }}
     >
       {IconComponent && <IconComponent size={28} className={displayText ? 'mb-2 text-white' : 'text-white'} />}
       {displayText && (

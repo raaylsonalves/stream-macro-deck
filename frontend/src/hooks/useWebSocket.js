@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchVariables } from '../services/api';
 
-const WS_URL = 'ws://localhost:3001';
+const hostname = window.location.hostname || 'localhost';
+const WS_URL = `ws://${hostname}:3001`;
 
 export function useWebSocket() {
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [variables, setVariables] = useState({});
+  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   useEffect(() => {
     fetchVariables().then(setVariables).catch(console.error);
@@ -23,6 +25,8 @@ export function useWebSocket() {
         const data = JSON.parse(event.data);
         if (data.type === 'VARIABLES_UPDATE') {
           setVariables(data.data);
+        } else if (data.type === 'FORCE_RELOAD') {
+          setReloadTrigger(prev => prev + 1);
         } else {
           console.log('[WS] Received:', data);
         }
@@ -49,5 +53,5 @@ export function useWebSocket() {
     }
   }, [socket, connected]);
 
-  return { connected, variables, sendMessage };
+  return { connected, variables, sendMessage, reloadTrigger };
 }

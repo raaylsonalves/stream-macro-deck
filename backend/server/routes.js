@@ -14,6 +14,52 @@ router.get('/pages', (req, res) => {
   });
 });
 
+router.post('/pages', (req, res) => {
+  const { name, type = 'grid', grid_rows = 3, grid_cols = 5 } = req.body;
+  db.db.run(
+    'INSERT INTO pages (name, type, grid_rows, grid_cols) VALUES (?, ?, ?, ?)',
+    [name, type, grid_rows, grid_cols],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, id: this.lastID });
+      const wsHandler = require('../core/websocketHandler');
+      wsHandler.broadcast({ type: 'FORCE_RELOAD' });
+    }
+  );
+});
+
+router.put('/pages/:id', (req, res) => {
+  const pageId = req.params.id;
+  const { name, type, grid_rows, grid_cols } = req.body;
+  
+  db.db.run(
+    'UPDATE pages SET name = COALESCE(?, name), type = COALESCE(?, type), grid_rows = COALESCE(?, grid_rows), grid_cols = COALESCE(?, grid_cols) WHERE id = ?',
+    [name, type, grid_rows, grid_cols, pageId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      
+      const wsHandler = require('../core/websocketHandler');
+      wsHandler.broadcast({ type: 'FORCE_RELOAD' });
+      
+      res.json({ success: true });
+    }
+  );
+});
+
+router.delete('/pages/:id', (req, res) => {
+  const pageId = req.params.id;
+  db.db.run('DELETE FROM actions WHERE button_id IN (SELECT id FROM buttons WHERE page_id = ?)', [pageId], (err) => {
+    db.db.run('DELETE FROM buttons WHERE page_id = ?', [pageId], (err2) => {
+      db.db.run('DELETE FROM pages WHERE id = ?', [pageId], (err3) => {
+        if (err3) return res.status(500).json({ error: err3.message });
+        res.json({ success: true });
+        const wsHandler = require('../core/websocketHandler');
+        wsHandler.broadcast({ type: 'FORCE_RELOAD' });
+      });
+    });
+  });
+});
+
 router.get('/variables', (req, res) => {
   res.json(pluginManager.getVariables());
 });
@@ -240,8 +286,8 @@ router.post('/import', (req, res) => {
     db.db.run('DELETE FROM plugin_configs');
 
     // Insert pages
-    const insertPage = db.db.prepare('INSERT INTO pages (id, name, grid_rows, grid_cols) VALUES (?, ?, ?, ?)');
-    pages.forEach(p => insertPage.run(p.id, p.name, p.grid_rows || 3, p.grid_cols || 5));
+    const insertPage = db.db.prepare('INSERT INTO pages (id, name, type, grid_rows, grid_cols) VALUES (?, ?, ?, ?, ?)');
+    pages.forEach(p => insertPage.run(p.id, p.name, p.type || 'grid', p.grid_rows || 3, p.grid_cols || 5));
     insertPage.finalize();
 
     // Insert buttons

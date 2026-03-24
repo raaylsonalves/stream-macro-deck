@@ -1,4 +1,5 @@
-const API_URL = 'http://localhost:3001/api';
+const hostname = window.location.hostname || 'localhost';
+const API_URL = `http://${hostname}:3001/api`;
 
 export const fetchPages = async () => {
   const res = await fetch(`${API_URL}/pages`);
@@ -7,6 +8,31 @@ export const fetchPages = async () => {
 
 export const fetchButtons = async (pageId) => {
   const res = await fetch(`${API_URL}/pages/${pageId}/buttons`);
+  return res.json();
+};
+
+export const updatePage = async (pageId, data) => {
+  const res = await fetch(`${API_URL}/pages/${pageId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const createPage = async (data) => {
+  const res = await fetch(`${API_URL}/pages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const deletePage = async (pageId) => {
+  const res = await fetch(`${API_URL}/pages/${pageId}`, {
+    method: 'DELETE'
+  });
   return res.json();
 };
 

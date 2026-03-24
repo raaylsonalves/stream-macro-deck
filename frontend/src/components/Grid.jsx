@@ -7,12 +7,11 @@ export default function Grid({ pages, activePageId, buttons, variables, onButton
   const cols = activePage?.grid_cols || 5;
 
   return (
-    <div className="flex-1 p-6 bg-neutral-900 rounded-xl overflow-hidden flex flex-col justify-center items-center h-full">
+    <div className="flex-1 p-4 bg-neutral-900 rounded-xl overflow-y-auto w-full flex flex-col items-center">
       <div 
-        className="grid gap-4 w-full h-full max-h-[800px]"
+        className="grid gap-3 w-full max-w-[1200px]"
         style={{ 
-          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`
         }}
       >
         {Array.from({ length: rows * cols }).map((_, i) => {

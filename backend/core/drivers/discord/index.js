@@ -51,6 +51,7 @@ module.exports = {
         // Export variables!
         context.setVariable('status', 'Conectado 🟢');
         context.setVariable('user', rpcClient.user.username);
+        context.setVariable('user_id', rpcClient.user.id);
 
         // Static leave action variables
         context.setVariable('leave_icon', '🚪');
@@ -69,10 +70,13 @@ module.exports = {
         }).catch(() => { });
 
         // Initial channel state fetch
-        rpcClient.request('GET_SELECTED_VOICE_CHANNEL').then(channel => {
-          context.setVariable('channel_name', channel ? channel.name : 'Nenhum');
-          context.setVariable('channel_users', channel?.voice_states ? channel.voice_states.length.toString() : '0');
-        }).catch(() => {
+        rpcClient.request('GET_SELECTED_VOICE_CHANNEL').then(res => {
+          const channel = res?.data || res;
+          context.setVariable('channel_debug', JSON.stringify(channel || {}));
+          context.setVariable('channel_name', (channel && channel.name) ? channel.name : 'Voz');
+          context.setVariable('channel_users', (channel && channel.voice_states) ? channel.voice_states.length.toString() : '0');
+        }).catch((err) => {
+          context.setVariable('channel_debug', err.message);
           context.setVariable('channel_name', 'Nenhum');
           context.setVariable('channel_users', '0');
         });
@@ -98,14 +102,18 @@ module.exports = {
         rpcClient.on('VOICE_CHANNEL_SELECT', async (data) => {
           if (data && data.channel_id) {
             try {
-              const channelInfo = await rpcClient.request('GET_SELECTED_VOICE_CHANNEL');
-              context.setVariable('channel_name', channelInfo.name || 'Desconhecido');
-              context.setVariable('channel_users', channelInfo.voice_states ? channelInfo.voice_states.length.toString() : '0');
+              const res = await rpcClient.request('GET_SELECTED_VOICE_CHANNEL');
+              const channelInfo = res?.data || res;
+              context.setVariable('channel_debug', JSON.stringify(channelInfo || {}));
+              context.setVariable('channel_name', (channelInfo && channelInfo.name) ? channelInfo.name : 'Voz');
+              context.setVariable('channel_users', (channelInfo && channelInfo.voice_states) ? channelInfo.voice_states.length.toString() : '0');
             } catch (e) {
+              context.setVariable('channel_debug', e.message);
               context.setVariable('channel_name', 'Nenhum');
               context.setVariable('channel_users', '0');
             }
           } else {
+            context.setVariable('channel_debug', 'Desconectou');
             context.setVariable('channel_name', 'Nenhum');
             context.setVariable('channel_users', '0');
           }
@@ -191,6 +199,32 @@ module.exports = {
           console.log(`[Discord] Left the local voice channel.`);
         } catch (e) {
           console.error('[Discord] Failed to leave channel:', e.message);
+        }
+      }
+    },
+    {
+      id: 'set_user_volume',
+      name: 'Set User Volume',
+      description: 'Used internally by the Discord Mixer View',
+      execute: async ({ userId, volume }) => {
+        if (!rpcClient || !pluginContext) return;
+        try {
+          await rpcClient.request('SET_USER_VOICE_SETTINGS', {
+            user_id: userId,
+            volume: parseInt(volume)
+          });
+          console.log(`[Discord] Set user ${userId} volume to ${volume}%`);
+          
+          // Re-fetch channel to trigger a live variable broadcast back to the UI
+          setTimeout(async () => {
+             try {
+               const res = await rpcClient.request('GET_SELECTED_VOICE_CHANNEL');
+               const channelInfo = res?.data || res;
+               pluginContext.setVariable('channel_debug', JSON.stringify(channelInfo || {}));
+             } catch(e){}
+          }, 300);
+        } catch (e) {
+          console.error('[Discord] Failed to set user volume:', e.message);
         }
       }
     }

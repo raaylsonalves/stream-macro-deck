@@ -4,16 +4,23 @@ import ButtonEditor from './components/ButtonEditor';
 import PluginsView from './components/PluginsView';
 import VariablesView from './components/VariablesView';
 import SettingsView from './components/SettingsView';
+import DiscordView from './views/DiscordView';
 import { useWebSocket } from './hooks/useWebSocket';
-import { fetchPages, fetchButtons, executeButtonAction, deleteButton } from './services/api';
+import { fetchPages, fetchButtons, executeButtonAction, deleteButton, updatePage } from './services/api';
 import { Settings, PlaySquare, Edit3, Grid3X3, Plug, Trash2, Edit2, Database, List, LayoutGrid } from 'lucide-react';
 
 function App() {
+  const isSurfaceMode = window.location.pathname === '/surface';
+
   const [pages, setPages] = useState([]);
   const [buttons, setButtons] = useState([]);
   const [activePageId, setActivePageId] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [activeView, setActiveView] = useState('grid'); // 'grid', 'plugins', 'variables', 'settings'
+  
+  // Surface UI State
+  const [isSurfaceHeaderVisible, setIsSurfaceHeaderVisible] = useState(true);
+  const [showSurfaceSettings, setShowSurfaceSettings] = useState(false);
   
   // Editor State
   const [editorOpen, setEditorOpen] = useState(false);
@@ -22,7 +29,13 @@ function App() {
   // Context Menu State
   const [contextMenu, setContextMenu] = useState(null);
 
-  const { connected, variables } = useWebSocket();
+  const { connected, variables, reloadTrigger } = useWebSocket();
+
+  useEffect(() => {
+    if (reloadTrigger > 0) {
+      loadData(activePageId);
+    }
+  }, [reloadTrigger]);
 
   useEffect(() => {
     loadData();
@@ -33,13 +46,14 @@ function App() {
     return () => document.removeEventListener('click', closeContextMenu);
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (preservePageId = null) => {
     try {
       const pgs = await fetchPages();
       setPages(pgs);
       if (pgs.length > 0) {
-        setActivePageId(pgs[0].id);
-        const btns = await fetchButtons(pgs[0].id);
+        const targetId = preservePageId || activePageId || pgs[0].id;
+        setActivePageId(targetId);
+        const btns = await fetchButtons(targetId);
         setButtons(btns);
       }
     } catch (e) {
@@ -85,6 +99,142 @@ function App() {
       console.error('Failed to delete button', e);
     }
   };
+
+  if (isSurfaceMode) {
+    const activePageIndex = pages.findIndex(p => p.id === activePageId);
+    
+    return (
+      <div className="flex flex-col h-screen w-screen bg-black text-white p-2 font-inter overflow-hidden relative">
+        {!isSurfaceHeaderVisible && (
+          <button 
+            onClick={() => setIsSurfaceHeaderVisible(true)}
+            className="absolute top-4 right-4 z-50 p-4 bg-neutral-900/40 backdrop-blur-md border border-white/10 rounded-full text-white/50 hover:text-white transition-colors shadow-2xl"
+          >
+            <Settings size={28} />
+          </button>
+        )}
+
+        <div className={`transition-all duration-300 ease-in-out origin-top flex flex-col gap-2 shrink-0 ${isSurfaceHeaderVisible ? 'opacity-100 scale-100 mb-2' : 'opacity-0 scale-95 h-0 overflow-hidden mb-0 pointer-events-none'}`}>
+          <div className="flex justify-between items-center bg-neutral-900 p-3 rounded-xl border border-white/5 shadow-sm">
+            <button 
+              disabled={activePageIndex <= 0}
+              onClick={() => {
+                 const prevPage = pages[activePageIndex - 1];
+                 if (prevPage) {
+                   setActivePageId(prevPage.id);
+                   loadButtons(prevPage.id);
+                 }
+              }}
+              className="px-5 py-4 bg-neutral-800 disabled:opacity-50 rounded-lg text-sm font-bold text-neutral-300 active:bg-neutral-700 transition-colors"
+            >
+              &lt; Anterior
+            </button>
+            
+            <div className="flex flex-col items-center">
+              <h2 className="font-semibold text-lg text-neutral-200">
+                {pages[activePageIndex]?.name || 'Carregando...'}
+              </h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                 <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500'}`}></div>
+                 <span className="text-[10px] text-neutral-500 uppercase font-bold">{connected ? 'Online' : 'Offline'}</span>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowSurfaceSettings(!showSurfaceSettings)}
+                className={`p-4 rounded-lg transition-colors flex items-center justify-center ${showSurfaceSettings ? 'bg-blue-600/30 text-blue-400' : 'bg-neutral-800 text-neutral-300 active:bg-neutral-700'}`}
+              >
+                <Settings size={20} />
+              </button>
+              <button 
+                disabled={activePageIndex >= pages.length - 1}
+                onClick={() => {
+                   const nextPage = pages[activePageIndex + 1];
+                   if (nextPage) {
+                     setActivePageId(nextPage.id);
+                     loadButtons(nextPage.id);
+                   }
+                }}
+                className="px-5 py-4 bg-neutral-800 disabled:opacity-50 rounded-lg text-sm font-bold text-neutral-300 active:bg-neutral-700 transition-colors"
+              >
+                Próximo &gt;
+              </button>
+              <button
+                onClick={() => setIsSurfaceHeaderVisible(false)}
+                className="px-5 font-bold text-lg bg-neutral-800 rounded-lg text-neutral-400 active:bg-red-500/50 hover:text-white transition-colors"
+                title="Ocultar Cabeçalho (Tela Cheia)"
+              >
+                X
+              </button>
+            </div>
+          </div>
+
+          {showSurfaceSettings && pages.find(p => p.id === activePageId) && (
+             <div className="flex items-center justify-center gap-4 bg-neutral-900 p-4 rounded-xl border border-white/5 shadow-sm">
+                <span className="text-sm text-neutral-400 font-semibold uppercase tracking-wider">Grade:</span>
+                <div className="flex items-center gap-2 text-base">
+                  <span className="text-neutral-500 font-medium">Colunas</span>
+                  <div className="flex items-center bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700">
+                    <button 
+                      className="px-4 py-2 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                      onClick={() => updatePage(activePageId, { grid_cols: Math.max(1, (pages.find(p => p.id === activePageId).grid_cols || 5) - 1) })}
+                    >-</button>
+                    <div className="w-8 text-center font-bold text-white">{pages.find(p => p.id === activePageId).grid_cols || 5}</div>
+                    <button 
+                      className="px-4 py-2 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                      onClick={() => updatePage(activePageId, { grid_cols: Math.min(20, (pages.find(p => p.id === activePageId).grid_cols || 5) + 1) })}
+                    >+</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-base ml-2">
+                  <span className="text-neutral-500 font-medium">Linhas</span>
+                  <div className="flex items-center bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700">
+                    <button 
+                      className="px-4 py-2 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                      onClick={() => updatePage(activePageId, { grid_rows: Math.max(1, (pages.find(p => p.id === activePageId).grid_rows || 3) - 1) })}
+                    >-</button>
+                    <div className="w-8 text-center font-bold text-white">{pages.find(p => p.id === activePageId).grid_rows || 3}</div>
+                    <button 
+                      className="px-4 py-2 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                      onClick={() => updatePage(activePageId, { grid_rows: Math.min(20, (pages.find(p => p.id === activePageId).grid_rows || 3) + 1) })}
+                    >+</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-base border-l border-white/10 pl-4 ml-2">
+                  <span className="text-neutral-500 font-medium">Layout</span>
+                  <select
+                    className="bg-neutral-800 text-white rounded border border-neutral-700 py-2 px-2 cursor-pointer outline-none text-sm font-bold"
+                    value={pages.find(p => p.id === activePageId).type || 'grid'}
+                    onChange={async (e) => {
+                       await updatePage(activePageId, { type: e.target.value });
+                    }}
+                  >
+                    <option value="grid">Grade (Botões)</option>
+                    <option value="discord">Mixer Discord</option>
+                  </select>
+                </div>
+             </div>
+          )}
+        </div>
+        
+        <div className="flex-1 overflow-auto rounded-xl border border-white/5 bg-neutral-900/50 p-2 relative mt-0 z-0">
+          {pages[activePageIndex]?.type === 'discord' ? (
+            <DiscordView variables={variables} />
+          ) : (
+            <Grid 
+              pages={pages} 
+              activePageId={activePageId} 
+              buttons={buttons} 
+              variables={variables}
+              onButtonClick={handleButtonClick}
+              onContextMenu={(e) => e.preventDefault()}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-black text-white p-4 gap-4 font-inter">
@@ -153,7 +303,57 @@ function App() {
       {activeView === 'grid' ? (
         <div className="flex-1 flex flex-col gap-4">
           <div className="flex justify-between items-center bg-neutral-900 p-4 rounded-xl border border-white/5 shadow-sm">
-            <h2 className="font-semibold text-lg text-neutral-200">{pages.find(p => p.id === activePageId)?.name || 'Loading...'}</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="font-semibold text-lg text-neutral-200">{pages.find(p => p.id === activePageId)?.name || 'Loading...'}</h2>
+              
+              {isEditMode && pages.find(p => p.id === activePageId) && (
+                <div className="flex items-center gap-3 bg-black/40 px-3 py-1.5 rounded-lg border border-white/10">
+                  <span className="text-xs text-neutral-400 font-semibold uppercase tracking-wider">Tamanho da Grid:</span>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-neutral-500">Colunas</span>
+                    <div className="flex items-center bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700">
+                      <button 
+                        className="px-2 py-0.5 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                        onClick={() => updatePage(activePageId, { grid_cols: Math.max(1, (pages.find(p => p.id === activePageId).grid_cols || 5) - 1) })}
+                      >-</button>
+                      <div className="w-6 text-center text-white text-sm">{pages.find(p => p.id === activePageId).grid_cols || 5}</div>
+                      <button 
+                        className="px-2 py-0.5 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                        onClick={() => updatePage(activePageId, { grid_cols: Math.min(20, (pages.find(p => p.id === activePageId).grid_cols || 5) + 1) })}
+                      >+</button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm ml-2">
+                    <span className="text-neutral-500">Linhas</span>
+                    <div className="flex items-center bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700">
+                      <button 
+                        className="px-2 py-0.5 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                        onClick={() => updatePage(activePageId, { grid_rows: Math.max(1, (pages.find(p => p.id === activePageId).grid_rows || 3) - 1) })}
+                      >-</button>
+                      <div className="w-6 text-center text-white text-sm">{pages.find(p => p.id === activePageId).grid_rows || 3}</div>
+                      <button 
+                        className="px-2 py-0.5 hover:bg-neutral-700 active:bg-neutral-600 text-neutral-300 font-bold"
+                        onClick={() => updatePage(activePageId, { grid_rows: Math.min(20, (pages.find(p => p.id === activePageId).grid_rows || 3) + 1) })}
+                      >+</button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm border-l border-white/10 pl-3 ml-1">
+                    <span className="text-neutral-500 font-medium">Layout</span>
+                    <select
+                      className="bg-neutral-800 text-white rounded border border-neutral-700 py-1 cursor-pointer outline-none text-xs font-semibold"
+                      value={pages.find(p => p.id === activePageId).type || 'grid'}
+                      onChange={async (e) => {
+                         await updatePage(activePageId, { type: e.target.value });
+                      }}
+                    >
+                      <option value="grid">Grade de Botões</option>
+                      <option value="discord">Mixer do Discord</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="flex gap-2">
               <button 
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors font-medium text-sm ${isEditMode ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)]' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'}`}
@@ -165,14 +365,20 @@ function App() {
             </div>
           </div>
           
-          <Grid 
-            pages={pages} 
-            activePageId={activePageId} 
-            buttons={buttons} 
-            variables={variables}
-            onButtonClick={handleButtonClick}
-            onContextMenu={handleContextMenu}
-          />
+          {pages.find(p => p.id === activePageId)?.type === 'discord' ? (
+            <div className="flex-1 overflow-hidden">
+              <DiscordView variables={variables} />
+            </div>
+          ) : (
+            <Grid 
+              pages={pages} 
+              activePageId={activePageId} 
+              buttons={buttons} 
+              variables={variables}
+              onButtonClick={handleButtonClick}
+              onContextMenu={handleContextMenu}
+            />
+          )}
         </div>
       ) : activeView === 'plugins' ? (
         <PluginsView />

@@ -25,10 +25,18 @@ class Database {
         CREATE TABLE IF NOT EXISTS pages (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
+          type TEXT DEFAULT 'grid',
           grid_rows INTEGER DEFAULT 3,
           grid_cols INTEGER DEFAULT 5
         )
       `);
+
+      // Migration: Add 'type' column to 'pages' if it doesn't exist
+      this.db.all("PRAGMA table_info(pages)", (err, rows) => {
+        if (!err && rows && !rows.find(r => r.name === 'type')) {
+          this.db.run("ALTER TABLE pages ADD COLUMN type TEXT DEFAULT 'grid'");
+        }
+      });
 
       this.db.run(`
         CREATE TABLE IF NOT EXISTS buttons (
