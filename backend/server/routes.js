@@ -66,14 +66,31 @@ router.get('/variables', (req, res) => {
 
 router.get('/pages/:id/buttons', (req, res) => {
   const pageId = req.params.id;
-  db.db.all(`
-    SELECT b.*, a.plugin_id, a.action_id 
-    FROM buttons b 
-    LEFT JOIN actions a ON b.id = a.button_id 
-    WHERE b.page_id = ?
-  `, [pageId], (err, rows) => {
+  db.db.all('SELECT * FROM buttons WHERE page_id = ?', [pageId], (err, buttonsRow) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
+    if (buttonsRow.length === 0) return res.json([]);
+
+    const buttonIds = buttonsRow.map(b => b.id);
+    db.db.all(`SELECT * FROM actions WHERE button_id IN (${buttonIds.join(',')}) ORDER BY id ASC`, (err2, actionRows) => {
+      if (err2) return res.status(500).json({ error: err2.message });
+
+      const buttons = buttonsRow.map(btn => {
+        const btnActions = actionRows.filter(a => a.button_id === btn.id).map(a => {
+          let parsedPayload = {};
+          try { parsedPayload = JSON.parse(a.payload || '{}'); } catch(e){}
+          return {
+            id: a.id,
+            plugin_id: a.plugin_id,
+            action_id: a.action_id,
+            payload: parsedPayload
+          };
+        });
+
+        return { ...btn, actions: btnActions };
+      });
+
+      res.json(buttons);
+    });
   });
 });
 
@@ -179,7 +196,7 @@ router.post('/execute', (req, res) => {
 });
 
 router.post('/buttons', (req, res) => {
-  const { id, page_id, row_index, col_index, text, color, icon, action_id, plugin_id } = req.body;
+  const { id, page_id, row_index, col_index, text, color, icon, actions } = req.body;
   
   if (id) {
     // Update existing button
@@ -189,19 +206,17 @@ router.post('/buttons', (req, res) => {
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
         
-        // Upsert action
-        if (action_id && plugin_id) {
-          db.db.run(
-            'UPDATE actions SET plugin_id = ?, action_id = ? WHERE button_id = ?',
-            [plugin_id, action_id, id],
-            function (updateErr) {
-              if (this.changes === 0) {
-                db.db.run('INSERT INTO actions (button_id, plugin_id, action_id) VALUES (?, ?, ?)', [id, plugin_id, action_id]);
-              }
-            }
-          );
-        }
-        res.json({ success: true, id });
+        // Replace all actions
+        db.db.run('DELETE FROM actions WHERE button_id = ?', [id], function(err2) {
+          if (err2) return res.status(500).json({ error: err2.message });
+          
+          if (actions && Array.isArray(actions) && actions.length > 0) {
+            const stmt = db.db.prepare('INSERT INTO actions (button_id, plugin_id, action_id, payload) VALUES (?, ?, ?, ?)');
+            actions.forEach(a => stmt.run(id, a.plugin_id, a.action_id, JSON.stringify(a.payload || {})));
+            stmt.finalize();
+          }
+          res.json({ success: true, id });
+        });
       }
     );
   } else {
@@ -213,8 +228,10 @@ router.post('/buttons', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         const newId = this.lastID;
         
-        if (action_id && plugin_id) {
-          db.db.run('INSERT INTO actions (button_id, plugin_id, action_id) VALUES (?, ?, ?)', [newId, plugin_id, action_id]);
+        if (actions && Array.isArray(actions) && actions.length > 0) {
+          const stmt = db.db.prepare('INSERT INTO actions (button_id, plugin_id, action_id, payload) VALUES (?, ?, ?, ?)');
+          actions.forEach(a => stmt.run(newId, a.plugin_id, a.action_id, JSON.stringify(a.payload || {})));
+          stmt.finalize();
         }
         res.json({ success: true, id: newId });
       }
@@ -235,16 +252,20 @@ router.delete('/buttons/:id', (req, res) => {
 
 router.post('/buttons/:id/execute', (req, res) => {
   const buttonId = req.params.id;
-  db.db.get('SELECT * FROM actions WHERE button_id = ?', [buttonId], (err, action) => {
+  db.db.all('SELECT * FROM actions WHERE button_id = ? ORDER BY id ASC', [buttonId], (err, actionsRow) => {
     if (err) return res.status(500).json({ error: err.message });
-    if (!action) return res.status(404).json({ error: 'No action assigned to this button' });
+    if (!actionsRow || actionsRow.length === 0) return res.json({ success: true, message: 'No actions assigned' });
     
-    const success = pluginManager.executeAction(action.plugin_id, action.action_id, { buttonId: buttonId, payload: action.payload });
-    if (success) {
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ error: 'Action execution failed - check logs' });
+    let allSuccess = true;
+    for (const action of actionsRow) {
+      let parsedPayload = {};
+      try { parsedPayload = JSON.parse(action.payload || '{}'); } catch(e){}
+      
+      const success = pluginManager.executeAction(action.plugin_id, action.action_id, { buttonId: buttonId, payload: parsedPayload });
+      if (!success) allSuccess = false;
     }
+    
+    res.json({ success: allSuccess });
   });
 });
 

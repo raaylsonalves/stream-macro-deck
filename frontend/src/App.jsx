@@ -5,6 +5,7 @@ import PluginsView from './components/PluginsView';
 import VariablesView from './components/VariablesView';
 import SettingsView from './components/SettingsView';
 import DiscordView from './views/DiscordView';
+import SoundcraftView from './views/SoundcraftView';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchPages, fetchButtons, executeButtonAction, deleteButton, updatePage } from './services/api';
 import { Settings, PlaySquare, Edit3, Grid3X3, Plug, Trash2, Edit2, Database, List, LayoutGrid } from 'lucide-react';
@@ -212,6 +213,7 @@ function App() {
                   >
                     <option value="grid">Grade (Botões)</option>
                     <option value="discord">Mixer Discord</option>
+                    <option value="soundcraft">Mixer Soundcraft</option>
                   </select>
                 </div>
              </div>
@@ -221,6 +223,8 @@ function App() {
         <div className="flex-1 overflow-auto rounded-xl border border-white/5 bg-neutral-900/50 p-2 relative mt-0 z-0">
           {pages[activePageIndex]?.type === 'discord' ? (
             <DiscordView variables={variables} />
+          ) : pages[activePageIndex]?.type === 'soundcraft' ? (
+            <SoundcraftView variables={variables} />
           ) : (
             <Grid 
               pages={pages} 
@@ -348,6 +352,7 @@ function App() {
                     >
                       <option value="grid">Grade de Botões</option>
                       <option value="discord">Mixer do Discord</option>
+                      <option value="soundcraft">Mixer Soundcraft</option>
                     </select>
                   </div>
                 </div>
@@ -368,6 +373,10 @@ function App() {
           {pages.find(p => p.id === activePageId)?.type === 'discord' ? (
             <div className="flex-1 overflow-hidden">
               <DiscordView variables={variables} />
+            </div>
+          ) : pages.find(p => p.id === activePageId)?.type === 'soundcraft' ? (
+            <div className="flex-1 overflow-hidden">
+              <SoundcraftView variables={variables} />
             </div>
           ) : (
             <Grid 

@@ -35,7 +35,26 @@ module.exports = {
         });
 
         ws.on('message', (data) => {
-          // Native variables extraction logic could go here later
+          if (module.exports.isUnloaded) return;
+          const msgString = data.toString();
+          const lines = msgString.split('\n');
+          
+          for (const line of lines) {
+            const payload = line.replace(/^3:::/, '');
+            if (payload.startsWith('SETD^')) {
+              const parts = payload.split('^');
+              if (parts.length >= 3) {
+                const path = parts[1];
+                const value = parts[2];
+
+                // Mapear Line In L (l.0) e R (l.1)
+                if (path === 'l.0.mix') context.setVariable('line_l_mix', value);
+                else if (path === 'l.0.mute') context.setVariable('line_l_mute', value);
+                else if (path === 'l.1.mix') context.setVariable('line_r_mix', value);
+                else if (path === 'l.1.mute') context.setVariable('line_r_mute', value);
+              }
+            }
+          }
         });
 
         ws.on('close', () => {
@@ -56,7 +75,7 @@ module.exports = {
       // Ping keep-alive loop to emulate the official Bitfocus Companion heartbeat
       module.exports.pingInterval = setInterval(() => {
         if (module.exports.wsClient && module.exports.wsClient.readyState === WebSocket.OPEN) {
-          module.exports.wsClient.send('ALIVE');
+          module.exports.wsClient.send('3:::ALIVE');
         }
       }, 2000);
     },
@@ -75,72 +94,90 @@ module.exports = {
     {
       id: 'set_mute',
       name: 'Mutar/Desmutar Canal',
-      description: 'Payload: { "channel": "i.0", "state": 1 } (1=Mute, 0=Aberto)',
+      description: 'Muta ou abre um canal específico.',
+      fields: [
+        { id: 'channel', label: 'ID do Canal (ex: i.0, l.0, a.0)', type: 'string', default: 'i.0' },
+        { id: 'state', label: 'Ação de Mute', type: 'dropdown', options: [{label: 'Mutar (1)', value: '1'}, {label: 'Desmutar (0)', value: '0'}], default: '1' }
+      ],
       execute: async ({ channel, state }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== WebSocket.OPEN || !channel) return;
         
         // Ensure values map cleanly to Soundcraft's schema
         const value = parseInt(state) === 1 ? 1 : 0;
-        ws.send(`SETD^${channel}.mute^${value}`);
+        ws.send(`3:::SETD^${channel}.mute^${value}`);
       }
     },
     {
       id: 'set_fader',
       name: 'Deslizar Fader (Mix)',
-      description: 'Volume Linear 0.0 a 1.0. Payload: { "channel": "i.0", "val": 0.5 }',
+      description: 'Ajusta o fader de um canal para um volume específico.',
+      fields: [
+        { id: 'channel', label: 'ID do Canal (ex: i.0, l.0)', type: 'string', default: 'i.0' },
+        { id: 'val', label: 'Nível (0.0 até 1.0)', type: 'string', default: '0.765' }
+      ],
       execute: async ({ channel, val }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== require('ws').OPEN || !channel) return;
         
         const numberVal = parseFloat(val);
         if (isNaN(numberVal)) return;
-        ws.send(`SETD^${channel}.mix^${numberVal}`);
+        ws.send(`3:::SETD^${channel}.mix^${numberVal}`);
       }
     },
     {
       id: 'set_solo',
       name: 'Ligar/Desligar Solo',
-      description: 'Payload: { "channel": "i.0", "state": 1 }',
+      fields: [
+        { id: 'channel', label: 'ID do Canal', type: 'string', default: 'i.0' },
+        { id: 'state', label: 'Ação', type: 'dropdown', options: [{label: 'Ligar (1)', value: '1'}, {label: 'Desligar (0)', value: '0'}], default: '1' }
+      ],
       execute: async ({ channel, state }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== require('ws').OPEN || !channel) return;
         const value = parseInt(state) === 1 ? 1 : 0;
-        ws.send(`SETD^${channel}.solo^${value}`);
+        ws.send(`3:::SETD^${channel}.solo^${value}`);
       }
     },
     {
       id: 'set_phantom',
       name: 'Phantom Power 48v',
-      description: 'Payload: { "channel": "i.0", "state": 1 }',
+      fields: [
+        { id: 'channel', label: 'ID do Canal', type: 'string', default: 'i.0' },
+        { id: 'state', label: 'Energia', type: 'dropdown', options: [{label: 'Ligar 48v (1)', value: '1'}, {label: 'Desligar (0)', value: '0'}], default: '0' }
+      ],
       execute: async ({ channel, state }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== require('ws').OPEN || !channel) return;
         const value = parseInt(state) === 1 ? 1 : 0;
-        ws.send(`SETD^${channel}.phantom^${value}`);
+        ws.send(`3:::SETD^${channel}.phantom^${value}`);
       }
     },
     {
       id: 'master_mute',
       name: 'Mutar Master (L/R)',
-      description: 'Mute geral. Payload: { "state": 1 }',
+      fields: [
+        { id: 'state', label: 'Ação de Mute', type: 'dropdown', options: [{label: 'Mutar (1)', value: '1'}, {label: 'Desmutar (0)', value: '0'}], default: '1' }
+      ],
       execute: async ({ state }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== require('ws').OPEN) return;
         const value = parseInt(state) === 1 ? 1 : 0;
-        ws.send(`SETD^m.mute^${value}`);
+        ws.send(`3:::SETD^m.mute^${value}`);
       }
     },
     {
       id: 'master_fader',
       name: 'Fader do Master (L/R)',
-      description: 'Volume 0.0 a 1.0. Payload: { "val": 0.75 }',
+      fields: [
+        { id: 'val', label: 'Nível (0.0 até 1.0)', type: 'string', default: '0.765' }
+      ],
       execute: async ({ val }) => {
         const ws = module.exports.wsClient;
         if (!ws || ws.readyState !== require('ws').OPEN) return;
         const numberVal = parseFloat(val);
         if (isNaN(numberVal)) return;
-        ws.send(`SETD^m.mix^${numberVal}`);
+        ws.send(`3:::SETD^m.mix^${numberVal}`);
       }
     }
   ]

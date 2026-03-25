@@ -234,7 +234,8 @@ class PluginManager {
     return Array.from(this.actions.values()).map(a => ({
       pluginId: a.pluginId,
       actionId: a.id,
-      name: a.name
+      name: a.name,
+      fields: a.fields || []
     }));
   }
 }
